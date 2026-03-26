@@ -1,0 +1,21 @@
+# Secrets — ห้าม push เด็ดขาด
+.streamlit/secrets.toml
+secrets.toml
+secrets.toml.example
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit cache
+.streamlit/cache/

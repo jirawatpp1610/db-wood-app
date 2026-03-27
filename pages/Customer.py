@@ -103,13 +103,41 @@ result = pragmatic_forecast_and_score(df_c)
 if result["status"] == "success":
     weekly_total = result["expected_7d_ton"]
 
-    avg_gap_days     = result["avg_gap"]
-    avg_ton_per_trip = result["avg_ton"]
-    trips_per_week   = 7.0 / max(avg_gap_days, 0.5)
+    avg_gap_days          = result["avg_gap"]
+    std_gap_days          = result["std_gap"]
+    avg_ton_per_trip      = result["avg_ton"]       # all-time mean (baseline)
+    ewma_ton              = result["ewma_ton"]       # recency-weighted (ใช้ forecast)
+    trend_label           = result["trend_label"]
+    trend_factor          = result["trend_factor"]
+    has_weekday_pattern   = result["has_weekday_pattern"]
+    trips_per_week        = 7.0 / max(avg_gap_days, 0.5)
     historical_weekly_avg = avg_ton_per_trip * trips_per_week
 
+    _trend_icon = {"rising": "📈", "falling": "📉", "stable": "➡️"}[trend_label]
+    _trend_th   = {"rising": "เพิ่มขึ้น", "falling": "ลดลง", "stable": "คงที่"}[trend_label]
+
     st.subheader("⚠️ แผนปฏิบัติการสัปดาห์หน้า (Action Panel)")
-    st.metric("📦 คาดการณ์ปริมาณไม้ 7 วันข้างหน้า", f"{weekly_total:.1f} ตัน")
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric(
+        "📦 คาดการณ์ 7 วันข้างหน้า",
+        f"{weekly_total:.1f} ตัน",
+        help="คำนวณด้วย Gaussian Renewal Process โดยใช้ EWMA ton และ days since last delivery",
+    )
+    m2.metric(
+        f"{_trend_icon} แนวโน้ม Volume",
+        _trend_th,
+        delta=f"{(trend_factor - 1) * 100:+.0f}% vs ค่าเฉลี่ยทั้งหมด",
+        delta_color="normal",
+        help="เปรียบ 30 วันล่าสุด vs ค่าเฉลี่ยทั้งหมด",
+    )
+    m3.metric(
+        "🕐 ตันเฉลี่ยล่าสุด (EWMA)",
+        f"{ewma_ton:.1f} ตัน/ครั้ง",
+        delta=f"{ewma_ton - avg_ton_per_trip:+.1f} vs ค่าเฉลี่ยทั้งหมด",
+        delta_color="normal",
+        help="Exponential Weighted Moving Average (span=10) — ให้น้ำหนักข้อมูลล่าสุดมากกว่า",
+    )
 
     if weekly_total > historical_weekly_avg * 1.5:
         st.error(
@@ -124,12 +152,17 @@ if result["status"] == "success":
     else:
         st.success(f"✅ ปริมาณไม้เข้าสู่สภาวะปกติ (ระดับ {weekly_total:.1f} ตัน/สัปดาห์)")
 
-    st.caption(f"📐 ค่า baseline: {historical_weekly_avg:.1f} ตัน/สัปดาห์ (avg gap {avg_gap_days:.1f} วัน × {avg_ton_per_trip:.1f} ตัน/ครั้ง)")
+    weekday_note = " · มี weekday pattern" if has_weekday_pattern else ""
+    st.caption(
+        f"📐 baseline: {historical_weekly_avg:.1f} ตัน/สัปดาห์"
+        f" · avg gap {avg_gap_days:.1f} ± {std_gap_days:.1f} วัน"
+        f" · {avg_ton_per_trip:.1f} ตัน/ครั้ง (all-time){weekday_note}"
+    )
 
     st.metric(
         "⭐️ คะแนนความสำคัญลูกค้า (Priority Score)",
         f"{result['priority_score']:.2f}",
-        help="คำนวณจาก: ปริมาณคาดหวัง × ความถี่ × ความสม่ำเสมอ (ยิ่งคะแนนสูง ยิ่งควรโทรติดตามเช็คของ)",
+        help="คำนวณจาก: ปริมาณคาดหวัง × ความถี่ (30d) × ความสม่ำเสมอ × แนวโน้ม volume",
     )
 
 else:

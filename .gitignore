@@ -20,4 +20,10 @@ Thumbs.db
 # Streamlit cache
 .streamlit/cache/
 
+# AI Data
 .claude
+data.py
+master.parquet
+example-master.parquet
+master.prompt
+

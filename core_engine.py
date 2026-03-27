@@ -1,7 +1,7 @@
 """
 core_engine.py
 --------------
-1. DATA INGESTION  — โหลด master.parquet จาก Supabase Storage
+1. DATA INGESTION — โหลด master.parquet จาก Supabase Storage
 2. FORECAST ENGINE — พยากรณ์ปริมาณและจัดลำดับความสำคัญลูกค้า
 """
 
@@ -10,14 +10,35 @@ import streamlit as st
 
 
 # =========================================================
-# 1. DATA INGESTION (โหลดจาก Supabase Storage)
+# 1a. RAW MASTER CACHE (shared across all pages)
 # =========================================================
-@st.cache_data(ttl=300)   # refresh cache ทุก 5 นาที
+
+@st.cache_data(ttl=300)  # refresh cache ทุก 5 นาที
+def load_raw_master() -> pd.DataFrame:
+    """
+    คืน raw master DataFrame ตรงจาก Supabase (ยังไม่ aggregate)
+
+    FIX [High #1 & #2]: ทุกหน้าที่ต้องการ raw data ควรใช้ฟังก์ชันนี้
+    แทนการเรียก download_master() ตรงๆ เพื่อให้ share cache เดียวกัน
+    และลด Supabase API calls จาก 4 ครั้ง → 1 ครั้งต่อ TTL window
+    """
+    from storage_utils import download_master
+    return download_master()
+
+
+# =========================================================
+# 1b. DATA INGESTION (aggregate สำหรับ dashboard)
+# =========================================================
+
+@st.cache_data(ttl=300)  # refresh cache ทุก 5 นาที
 def load_real_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     คืน (daily_full, daily_raw)
-    - daily_raw  : ข้อมูลรายวันต่อลูกค้า (มีเฉพาะวันที่มีการมาส่ง)
-    - daily_full : เติม 0 ในวันที่ไม่มีการมาส่ง (ใช้วาดกราฟ)
+    - daily_raw : ข้อมูลรายวันต่อลูกค้า (มีเฉพาะวันที่มีการมาส่ง)
+    - daily_full: เติม 0 ในวันที่ไม่มีการมาส่ง (ใช้วาดกราฟ)
+
+    หมายเหตุ: ฟังก์ชันนี้เรียก download_master() ภายใน cache ของตัวเอง
+    ส่วน load_raw_master() เป็น cache entry แยก — ทั้งคู่มี TTL=300
     """
     from storage_utils import download_master
 
@@ -31,7 +52,7 @@ def load_real_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     # ---- แปลง timestamp และเรียงลำดับวันที่ ----
     df["date"] = pd.to_datetime(df["วัน/เวลาชั่งเข้า"]).dt.normalize()
-    df = df.sort_values("date")  # แก้ปัญหาข้อมูลไม่เรียงลำดับ
+    df = df.sort_values("date")
 
     df.rename(
         columns={
@@ -70,6 +91,7 @@ def load_real_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 # =========================================================
 # 2. CORE FORECAST ENGINE
 # =========================================================
+
 def pragmatic_forecast_and_score(df_c: pd.DataFrame) -> dict:
     """
     รับ df_c = DataFrame ของลูกค้าคนเดียว (daily_raw)
@@ -84,8 +106,8 @@ def pragmatic_forecast_and_score(df_c: pd.DataFrame) -> dict:
         }
 
     df_c = df_c.sort_values("date").copy()
-    time_deltas = df_c["date"].diff().dt.days.dropna()
 
+    time_deltas = df_c["date"].diff().dt.days.dropna()
     avg_gap = time_deltas.mean()
     std_gap = time_deltas.std() if len(time_deltas) > 1 else 0.0
     avg_ton = df_c["ton"].mean()
@@ -101,6 +123,7 @@ def pragmatic_forecast_and_score(df_c: pd.DataFrame) -> dict:
         }
         for i in range(1, 8)
     ]
+
     expected_7d_ton = sum(d["expected_ton"] for d in forecast_daily)
 
     cutoff_30d = base_date - pd.Timedelta(days=30)
@@ -116,5 +139,6 @@ def pragmatic_forecast_and_score(df_c: pd.DataFrame) -> dict:
         "priority_score": score,
         "forecast_daily": forecast_daily,
         "avg_gap": avg_gap,
+        "avg_ton": avg_ton,  # เพิ่มเพื่อให้ Customer.py ใช้ใน threshold
         "status": "success",
     }

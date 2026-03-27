@@ -44,7 +44,9 @@ def download_master() -> pd.DataFrame:
         err_str = str(e).lower()
         if "not found" in err_str or "404" in err_str or "object not found" in err_str:
             return pd.DataFrame()
-        st.warning(f"⚠️ download_master error: {e}")
+        # ไม่แสดง error จริงใน UI เพื่อป้องกัน URL/key รั่วไหล
+        # log เฉพาะ type ของ error เท่านั้น
+        st.warning(f"⚠️ ไม่สามารถโหลดข้อมูลได้ชั่วคราว ({type(e).__name__}) กรุณาลองใหม่อีกครั้ง")
         return pd.DataFrame()
 
 

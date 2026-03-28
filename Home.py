@@ -50,7 +50,13 @@ cust_today  = df_today["customer"].nunique() if not df_today.empty else 0
 trips_today = df_today["trips"].sum()  if not df_today.empty else 0
 
 today_str = fmt_date(real_today_th.date())
-st.subheader(f"🟢 สรุปยอดวันนี้ ({today_str})")
+st.subheader(f"🟢 ไม้เข้าวันนี้ ({today_str})")
+if not df_today.empty and "datetime" in df_today.columns:
+    last_trip_time = df_today["datetime"].max()
+    st.caption(f"อัพเดทล่าสุด: {last_trip_time.strftime('%H:%M น.')}")
+elif not raw_master.empty and "datetime" in raw_master.columns:
+    last_trip_time = raw_master["datetime"].max()
+    st.caption(f"อัพเดทล่าสุด: {last_trip_time.strftime('%H:%M น.')}")
 t_col1, t_col2, t_col3 = st.columns(3)
 t_col1.metric("จำนวนเที่ยวรถวันนี้",  f"{trips_today:,.0f} เที่ยว")
 t_col2.metric("จำนวนลูกค้าวันนี้",   f"{cust_today:,.0f} ราย")
@@ -272,15 +278,45 @@ prev_week_raw = daily_raw[
 col_t1, col_t2 = st.columns(2)
 
 with col_t1:
-    st.subheader("🏆 ลูกค้ารายใหญ่สัปดาห์ก่อนหน้า (Top Volume)")
-    top_prev = (
-        prev_week_raw.groupby("customer")["ton"]
-        .sum()
-        .sort_values(ascending=False)
-        .reset_index()
+    st.subheader("🔄 ลูกค้า reactive 3 เดือน")
+    cur_month_start  = real_today_th.replace(day=1)
+    inactive_start   = (cur_month_start - pd.DateOffset(months=3)).replace(day=1)
+    inactive_end     = cur_month_start - pd.Timedelta(days=1)
+    st.caption(
+        f"มาขายในเดือนนี้ แต่ไม่ได้มาในช่วง "
+        f"{fmt_date(inactive_start.date())} – {fmt_date(inactive_end.date())}"
     )
-    top_prev.columns = ["ชื่อลูกค้า", "ปริมาณส่งรวม (ตัน)"]
-    st.dataframe(top_prev[top_prev["ปริมาณส่งรวม (ตัน)"] > 0], width="stretch")
+    if not raw_master.empty:
+        cust_current = set(
+            raw_master[raw_master["date_only"] >= cur_month_start]["ชื่อลูกค้า"].unique()
+        )
+        cust_inactive_period = set(
+            raw_master[
+                (raw_master["date_only"] >= inactive_start) &
+                (raw_master["date_only"] <= inactive_end)
+            ]["ชื่อลูกค้า"].unique()
+        )
+        cust_any_history = set(
+            raw_master[raw_master["date_only"] < cur_month_start]["ชื่อลูกค้า"].unique()
+        )
+        reactive_custs = cust_current - cust_inactive_period
+        if reactive_custs:
+            reactive_df = (
+                raw_master[raw_master["ชื่อลูกค้า"].isin(reactive_custs)]
+                [["ชื่อลูกค้า", "ประเภทลูกค้า"]]
+                .drop_duplicates("ชื่อลูกค้า")
+                .rename(columns={"ชื่อลูกค้า": "ชื่อ"})
+                .reset_index(drop=True)
+            )
+            reactive_df["หมายเหตุ"] = reactive_df["ชื่อ"].apply(
+                lambda n: "ลูกค้าใหม่?" if n not in cust_any_history else "Reactive"
+            )
+            reactive_df.index = reactive_df.index + 1
+            st.dataframe(reactive_df, width="stretch")
+        else:
+            st.info("ไม่มีลูกค้า reactive ในเดือนนี้")
+    else:
+        st.info("ไม่มีข้อมูล")
 
 with col_t2:
     month_start = real_today_th.replace(day=1)

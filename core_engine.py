@@ -37,12 +37,10 @@ def load_real_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     - daily_raw : ข้อมูลรายวันต่อลูกค้า (มีเฉพาะวันที่มีการมาส่ง)
     - daily_full: เติม 0 ในวันที่ไม่มีการมาส่ง (ใช้วาดกราฟ)
 
-    หมายเหตุ: ฟังก์ชันนี้เรียก download_master() ภายใน cache ของตัวเอง
-    ส่วน load_raw_master() เป็น cache entry แยก — ทั้งคู่มี TTL=300
+    หมายเหตุ: ใช้ load_raw_master() แทน download_master() ตรงๆ
+    เพื่อให้ทั้งสองฟังก์ชัน share Supabase download เดียวกัน (1 call ต่อ TTL window)
     """
-    from storage_utils import download_master
-
-    df = download_master()
+    df = load_raw_master()
 
     if df.empty:
         empty = pd.DataFrame(
